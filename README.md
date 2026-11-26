@@ -1,5 +1,7 @@
 # DevOps Task - build, ship, deploy and observe a small web service
 
+Public repository: https://github.com/mohammadtalha-web/devops-task
+
 A tiny Node.js service taken from source to a **containerised, tested, scanned, multi-arch, deployed (EC2 + Kubernetes) and fully observable** state, with every piece defined as code.
 
 | Area | Where |

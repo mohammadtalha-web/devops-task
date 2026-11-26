@@ -95,14 +95,14 @@ jobs:
           cache-from: type=gha,scope=pr-image
           cache-to: type=gha,scope=pr-image,mode=max
       - name: Trivy - report HIGH and CRITICAL (informational)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: devops-task-app:pr-${{ github.event.pull_request.number }}
           severity: HIGH,CRITICAL
           exit-code: "0"
           format: table
       - name: Trivy - FAIL on CRITICAL
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: devops-task-app:pr-${{ github.event.pull_request.number }}
           severity: CRITICAL
