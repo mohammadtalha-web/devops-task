@@ -267,7 +267,7 @@ Known caveat: Node Exporter runs on the bridge network so Prometheus can reach i
 
 There are **no GitHub secrets at all**: authentication is OIDC; the role's trust policy only accepts tokens from this repository's `main` branch / environments, never from pull requests.
 
-> **Local CI evidence:** PR checks and Terraform validation are implemented in [`.github/workflows/pr.yml`](.github/workflows/pr.yml). The AWS `main` deployment and Trivy evidence require credentials and a GitHub-hosted repository; this local run verified the app tests, lint, Compose build, Terraform validation, and image build. Replace repository-specific run links once the workflows execute against your GitHub account.
+> **Public CI evidence:** [Pull Request #1](https://github.com/mohammadtalha-web/devops-task/pull/1) ran [PR checks](https://github.com/mohammadtalha-web/devops-task/actions/runs/45899995973) successfully: lint/tests/coverage, Dockerfile/shell/Compose/Prometheus validation, Terraform formatting/validation, image build, and Trivy scan. The repository is public at <https://github.com/mohammadtalha-web/devops-task>. AWS deployment remains pending AWS bootstrap and repository variables.
 
 ---
 
