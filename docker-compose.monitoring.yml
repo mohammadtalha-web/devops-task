@@ -54,8 +54,9 @@ services:
     #  - /var/run:ro -> Docker socket (container names/labels). Read-only mount, but the socket
     #    itself still allows API calls: treat cAdvisor as highly trusted.
     #  - /dev/kmsg   -> OOM-kill events
-    # Not privileged. If container metrics are empty on your host (e.g. SELinux, some Docker
-    # Desktop setups) add `privileged: true` - documented trade-off in README.
+    # Privileged mode is enabled for the broad host cgroup visibility needed by cAdvisor.
+    # On hardened Linux hosts, prefer Docker's standard unprivileged cgroup mount setup and
+    # remove this override if cAdvisor does not require it.
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro

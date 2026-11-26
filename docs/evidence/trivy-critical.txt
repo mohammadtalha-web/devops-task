@@ -1,0 +1,4 @@
+trivy: 0.57.1
+image: devops-task-app:1.0.0
+result: Total: 0 (CRITICAL: 0)
+base: node:22-alpine3.21@sha256:af8023ec879993821f6d5b21382ed915622a1b0f1cc03dbeb6804afaf01f8885

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- build stage: run the unit tests inside the build, so a red test = no image ----
-FROM node:22.11.0-alpine3.20 AS build
+FROM node:22-alpine3.21@sha256:af8023ec879993821f6d5b21382ed915622a1b0f1cc03dbeb6804afaf01f8885 AS build
 WORKDIR /app
 # The app has zero runtime dependencies. If it gains some, add a lockfile and
 # `RUN npm ci --omit=dev` here (before copying src) to keep the layer cacheable.
@@ -11,7 +11,7 @@ COPY test ./test
 RUN node --test
 
 # ---- runtime stage ----
-FROM node:22.11.0-alpine3.20 AS runtime
+FROM node:22-alpine3.21@sha256:af8023ec879993821f6d5b21382ed915622a1b0f1cc03dbeb6804afaf01f8885 AS runtime
 
 ARG VERSION=dev
 ARG GIT_SHA=unknown
@@ -26,7 +26,8 @@ LABEL org.opencontainers.image.title="devops-task-app" \
 
 # Remove tooling the running service never needs (npm/yarn): smaller image, fewer CVEs,
 # and no package manager for an attacker to use. Done as root before dropping privileges.
-RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+    && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
            /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 
 WORKDIR /app

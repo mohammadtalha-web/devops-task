@@ -193,9 +193,9 @@ flowchart LR
 
 **Language: Node.js with zero runtime dependencies.** Prometheus text exposition is a small, stable format, so the app renders it itself (counter, error counter, histogram). Result: no `node_modules`, no lockfile churn, nothing for Trivy to flag in app dependencies, and a build that works offline. The trade-off is that I own a ~100-line metrics module (unit-tested); a real service would normally use `prom-client`.
 
-**Alpine vs distroless.** The final image is `node:22.11.0-alpine3.20`, pinned to an exact version, with `npm`, `npx` and `yarn` deleted (never used at runtime, and the usual source of Trivy findings), running as UID 1000. Distroless (`gcr.io/distroless/nodejs22`) removes the shell/apk entirely and is the better choice when you can pin by digest in a reproducible way; I picked Alpine because a pinned version tag is verifiable by anyone, the `HEALTHCHECK` is simple, and the shell makes incident debugging easier. The Node binary dominates the size either way. Production hardening step: pin `@sha256:` digests and let Renovate/Dependabot bump them.
+**Alpine vs distroless.** The final image is built from `node:22-alpine3.21@sha256:af8023ec879993821f6d5b21382ed915622a1b0f1cc03dbeb6804afaf01f8885`, pinned by digest, with `npm`, `npx` and `yarn` deleted (never used at runtime), running as UID 1000. Distroless removes the shell/apk entirely, but Alpine keeps a small debugging surface and the required `HEALTHCHECK` while avoiding the end-of-life Alpine 3.20 base.
 
-> **Verified final image size:** `220714173` bytes (`210.5 MiB`) for `devops-task-app:1.0.0`, measured locally with `docker image inspect` after the Docker build. The size includes the pinned Node 22 Alpine runtime plus the application.
+> **Verified final image size:** `236420843` bytes (`225.4 MiB`) for `devops-task-app:1.0.0`, measured locally with `docker image inspect` after the final Docker build. The size includes the pinned and digest-pinned Node 22 Alpine 3.21 runtime plus the application. Trivy 0.57.1 reports `0` CRITICAL vulnerabilities for this image.
 
 **Tests run inside the Docker build** (build stage executes `node --test`), so an image with failing tests cannot be produced even locally.
 
@@ -241,7 +241,7 @@ Routing (Alertmanager -> Slack/Discord) is not set up; see *What I would improve
 | Container | Mounts / privileges | Why |
 |---|---|---|
 | Node Exporter | `pid: host`; `/:/host:ro`; `--path.rootfs=/host`; all capabilities dropped | read host `/proc`, `/sys`, filesystem stats. Read-only; not `privileged`; no published port |
-| cAdvisor | read-only `/`, `/sys`, `/var/lib/docker`, `/dev/disk`, `/var/run`; device `/dev/kmsg` | read cgroups and Docker metadata for per-container stats and OOM events. If metrics are empty on your host (SELinux, some Docker Desktop versions) add `privileged: true`: a known cAdvisor trade-off |
+| cAdvisor | read-only `/`, `/sys`, `/var/lib/docker`, `/dev/disk`, `/var/run`; `/dev/kmsg`; `privileged: true` | read cgroups and Docker metadata for per-container stats and OOM events. Privileged mode is broad and highly trusted; on hardened Linux hosts remove it if cgroups remain accessible without it |
 | Alloy | read-only `/var/run/docker.sock` | Docker service discovery and log collection. **The Docker socket is root-equivalent**: a `:ro` mount does not restrict API calls, so Alloy is trusted. Production alternative: ship logs by the Docker `loki`/`awslogs` driver or a node agent with scoped access |
 
 Known caveat: Node Exporter runs on the bridge network so Prometheus can reach it by name; its *network* panels therefore show its own network namespace, and the filesystem/CPU/memory panels show the host. For true host NIC metrics use `network_mode: host` and bind it to a private address.
@@ -250,7 +250,7 @@ Known caveat: Node Exporter runs on the bridge network so Prometheus can reach i
 
 ## 4. CI/CD
 
-**`pr.yml`** (every pull request): eslint, unit tests with an 80% coverage gate (summary in the job page, lcov artifact), hadolint, shellcheck, compose + Prometheus rule validation, `terraform fmt/validate`, then build the image and run **Trivy: report HIGH+CRITICAL, fail on CRITICAL**. `ignore-unfixed: true` means it fails on criticals that have a fix available (actionable); drop the flag for a stricter policy.
+**`pr.yml`** (every pull request): eslint, unit tests with an 80% coverage gate (summary in the job page, lcov artifact), Hadolint, ShellCheck, compose + Prometheus rule validation, `terraform fmt/validate`, then build the image and run **Trivy: report HIGH+CRITICAL, fail on CRITICAL**. The CRITICAL gate runs against all CRITICAL findings, including unfixed findings.
 
 **`main.yml`** (push to `main`): tests -> multi-arch (`linux/amd64`, `linux/arm64`) build with GitHub Actions layer cache -> push to ECR (OIDC) -> deploy **staging** via SSM -> **production** (manual approval through the `production` environment).
 
