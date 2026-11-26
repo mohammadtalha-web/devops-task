@@ -28,12 +28,11 @@ services:
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|run/credentials/.+)($$|/)
     # Why these privileges: node_exporter reads the HOST's /proc and /sys.
     #  - pid: host           -> process/CPU/memory stats come from the host PID namespace
-    #  - /:/host:ro,rslave   -> read-only view of the host filesystem for disk metrics (rslave so
-    #                           later host mounts propagate in; read-only so it cannot modify anything)
+    #  - /:/host:ro          -> read-only view of the host filesystem for disk metrics
     # No privileged mode, no published port, no extra capabilities.
     pid: host
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:ro
     restart: unless-stopped
     networks: [backend]
     cap_drop: [ALL]
@@ -65,6 +64,7 @@ services:
       - /dev/disk/:/dev/disk:ro
     devices:
       - /dev/kmsg
+    privileged: true
     restart: unless-stopped
     networks: [backend]
     deploy:

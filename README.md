@@ -125,7 +125,7 @@ curl http://app.localtest.me/                               # "version":"1.0.0" 
 
 Why it is zero-downtime: `maxUnavailable: 0` + `maxSurge: 1` (a new pod must be *Ready* before an old one is removed), readiness probe on `/health`, a `preStop` sleep so the endpoint is removed from the Service before SIGTERM, and the app flips `/health` to 503 and drains in-flight requests on SIGTERM.
 
-> **Evidence (replace before submitting):** paste the real `rollout status` / `rollout history` / `rollout undo` output and the `k8s-zero-downtime-check.sh` summary (`requests ok=N failed=0`) here.
+> **Verified local evidence:** [rollout status](docs/evidence/k8s-rollout-status.txt), [rollout history](docs/evidence/k8s-rollout-history.txt), [rollback status](docs/evidence/k8s-rollout-undo.txt), and [zero-downtime traffic check](docs/evidence/k8s-zero-downtime-check.txt). A local run reported `requests ok=120 failed=0` during the update/rollback exercise. The deployment used `maxSurge: 1`, `maxUnavailable: 0`, readiness/liveness probes, and a 5-second preStop drain.
 
 #### Secrets in Kubernetes
 
@@ -195,7 +195,7 @@ flowchart LR
 
 **Alpine vs distroless.** The final image is `node:22.11.0-alpine3.20`, pinned to an exact version, with `npm`, `npx` and `yarn` deleted (never used at runtime, and the usual source of Trivy findings), running as UID 1000. Distroless (`gcr.io/distroless/nodejs22`) removes the shell/apk entirely and is the better choice when you can pin by digest in a reproducible way; I picked Alpine because a pinned version tag is verifiable by anyone, the `HEALTHCHECK` is simple, and the shell makes incident debugging easier. The Node binary dominates the size either way. Production hardening step: pin `@sha256:` digests and let Renovate/Dependabot bump them.
 
-> **Final image size (replace before submitting):** run `docker images devops-task-app` and paste the value here. Expect roughly 120-140 MB uncompressed (the Node runtime is ~100 MB of that).
+> **Verified final image size:** `220714173` bytes (`210.5 MiB`) for `devops-task-app:1.0.0`, measured locally with `docker image inspect` after the Docker build. The size includes the pinned Node 22 Alpine runtime plus the application.
 
 **Tests run inside the Docker build** (build stage executes `node --test`), so an image with failing tests cannot be produced even locally.
 
@@ -240,7 +240,7 @@ Routing (Alertmanager -> Slack/Discord) is not set up; see *What I would improve
 
 | Container | Mounts / privileges | Why |
 |---|---|---|
-| Node Exporter | `pid: host`; `/:/host:ro,rslave`; `--path.rootfs=/host`; all capabilities dropped | read host `/proc`, `/sys`, filesystem stats. Read-only; not `privileged`; no published port |
+| Node Exporter | `pid: host`; `/:/host:ro`; `--path.rootfs=/host`; all capabilities dropped | read host `/proc`, `/sys`, filesystem stats. Read-only; not `privileged`; no published port |
 | cAdvisor | read-only `/`, `/sys`, `/var/lib/docker`, `/dev/disk`, `/var/run`; device `/dev/kmsg` | read cgroups and Docker metadata for per-container stats and OOM events. If metrics are empty on your host (SELinux, some Docker Desktop versions) add `privileged: true`: a known cAdvisor trade-off |
 | Alloy | read-only `/var/run/docker.sock` | Docker service discovery and log collection. **The Docker socket is root-equivalent**: a `:ro` mount does not restrict API calls, so Alloy is trusted. Production alternative: ship logs by the Docker `loki`/`awslogs` driver or a node agent with scoped access |
 
@@ -265,7 +265,7 @@ Known caveat: Node Exporter runs on the bridge network so Prometheus can reach i
 
 There are **no GitHub secrets at all**: authentication is OIDC; the role's trust policy only accepts tokens from this repository's `main` branch / environments, never from pull requests.
 
-> **Evidence (replace before submitting):** link a successful `main` workflow run, or add screenshots of the build-push, deploy-staging and deploy-production jobs, and of a green PR run showing Trivy.
+> **Local CI evidence:** PR checks and Terraform validation are implemented in [`.github/workflows/pr.yml`](.github/workflows/pr.yml). The AWS `main` deployment and Trivy evidence require credentials and a GitHub-hosted repository; this local run verified the app tests, lint, Compose build, Terraform validation, and image build. Replace repository-specific run links once the workflows execute against your GitHub account.
 
 ---
 
@@ -343,13 +343,13 @@ scripts/                system_health.sh, deploy-app.sh, ci-deploy.sh, systemd u
 
 ## Screenshots
 
-> Replace these with real screenshots from your run (Grafana at <http://localhost:3000>). Save them in `docs/screenshots/`.
+> Real screenshots captured from the running local Grafana stack are stored in `docs/screenshots/`.
 
 | Dashboard | Screenshot |
 |---|---|
-| Application | `![Application](docs/screenshots/application.png)` |
-| Host | `![Host](docs/screenshots/host.png)` |
-| Containers | `![Containers](docs/screenshots/containers.png)` |
+| Application | ![Application](docs/screenshots/application.png) |
+| Host | ![Host](docs/screenshots/host.png) |
+| Containers | ![Containers](docs/screenshots/containers.png) |
 
 ## Walkthrough: "An error spike appears on the Application dashboard. How do you find the cause?"
 
