@@ -1,0 +1,4 @@
+Platform: Docker Desktop with WSL 2
+Result: cAdvisor and Prometheus are healthy; container metric count was limited to the root cgroup.
+Limitation: Docker Desktop/WSL does not expose named child-container cgroups to cAdvisor on this host.
+Required for complete per-container evidence: run Docker on native Linux or a Linux VM.

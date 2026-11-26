@@ -347,6 +347,8 @@ scripts/                system_health.sh, deploy-app.sh, ci-deploy.sh, systemd u
 
 > Real screenshots captured from the running local Grafana stack are stored in `docs/screenshots/`.
 
+> **Container screenshot platform note:** Docker Desktop/WSL hides child container cgroups from cAdvisor, so the local Containers screenshot is captured but reports `No data` for this Windows-hosted run. The cAdvisor, Prometheus, and Containers dashboard configuration is complete; on native Linux/Docker it exposes named containers and memory limits. This is the only environment-specific evidence limitation outside AWS.
+
 | Dashboard | Screenshot |
 |---|---|
 | Application | ![Application](docs/screenshots/application.png) |
