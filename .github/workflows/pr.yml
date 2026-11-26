@@ -1,0 +1,110 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Lint, test & coverage
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests with coverage (fails below 80% lines)
+        run: |
+          mkdir -p coverage
+          node --test --experimental-test-coverage --test-coverage-lines=80 \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=coverage/lcov.info
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "### Coverage"
+            echo '```'
+            awk -F: '/^SF:/{f=$2} /^LF:/{lf=$2} /^LH:/{printf "%-22s %s/%s lines\n", f, $2, lf}' coverage/lcov.info
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: coverage, path: app/coverage }
+
+  lint-files:
+    name: Dockerfile, shell & config lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with: { dockerfile: app/Dockerfile, failure-threshold: warning }
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Validate compose files
+        env: { GRAFANA_ADMIN_PASSWORD: ci-only-dummy }
+        run: docker compose -f docker-compose.yml -f docker-compose.monitoring.yml config -q
+      - name: Validate Prometheus config and rules
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/p:ro" prom/prometheus:v2.55.1 check rules /p/rules/alerts.yml
+
+  terraform:
+    name: Terraform fmt & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.10.5" }
+      - run: terraform fmt -check -recursive terraform
+      - name: validate (main stack)
+        working-directory: terraform
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: validate (bootstrap stack)
+        working-directory: terraform/bootstrap
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+  image-scan:
+    name: Build image & Trivy scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (loaded locally, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          load: true
+          tags: devops-task-app:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha,scope=pr-image
+          cache-to: type=gha,scope=pr-image,mode=max
+      - name: Trivy - report HIGH and CRITICAL (informational)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: devops-task-app:pr-${{ github.event.pull_request.number }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+      - name: Trivy - FAIL on CRITICAL
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: devops-task-app:pr-${{ github.event.pull_request.number }}
+          severity: CRITICAL
+          exit-code: "1"
+          format: table

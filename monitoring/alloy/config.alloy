@@ -1,0 +1,61 @@
+// Docker service discovery -> parse app JSON logs -> Loki.
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.containers.receiver]
+}
+
+loki.process "containers" {
+  // Only the app emits our JSON schema; other containers are shipped as plain lines.
+  stage.match {
+    selector = "{service=\"app\"}"
+
+    stage.json {
+      expressions = {
+        level  = "level",
+        route  = "route",
+        method = "method",
+        status = "status",
+      }
+    }
+
+    // LABEL (indexed, very low cardinality: debug/info/warn/error): level.
+    stage.labels {
+      values = { level = "" }
+    }
+
+    // STRUCTURED METADATA (not indexed, no stream explosion, still filterable in LogQL):
+    // route / method / status. The raw `path` stays inside the JSON line (use `| json`).
+    stage.structured_metadata {
+      values = { route = "", method = "", status = "" }
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

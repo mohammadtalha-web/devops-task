@@ -1,0 +1,19 @@
+[Unit]
+Description=System health check (system_health.sh)
+Documentation=file:///opt/devops-task/README.md
+
+[Service]
+Type=oneshot
+Environment=HEALTH_LOG=/var/log/system_health/health_log.txt
+# Optional: EnvironmentFile=-/etc/system-health.env   (HEALTH_WEBHOOK_URL=https://hooks.slack.com/...)
+EnvironmentFile=-/etc/system-health.env
+ExecStart=/usr/local/bin/system_health.sh --json --cpu 90 --mem 85 --disk 80
+# Exit 1 (warning) / 2 (critical) mark the unit "failed" so `systemctl --failed` and
+# node-exporter's systemd collector can alert on it. Uncomment to treat warnings as success:
+# SuccessExitStatus=1
+LogsDirectory=system_health
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/system_health

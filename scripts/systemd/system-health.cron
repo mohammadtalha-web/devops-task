@@ -1,0 +1,2 @@
+# Alternative to the systemd timer: install as /etc/cron.d/system-health
+*/5 * * * * root HEALTH_LOG=/var/log/system_health/health_log.txt /usr/local/bin/system_health.sh --json >/dev/null 2>&1

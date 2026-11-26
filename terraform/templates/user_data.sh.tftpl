@@ -1,0 +1,33 @@
+#!/bin/bash
+# Bootstrap: install Docker, drop config + scripts, optionally start the app. Runs once at first boot.
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+mkdir -p /opt/app
+cat > /opt/app/deploy.conf <<'CONF'
+AWS_REGION=${region}
+LOG_GROUP=${log_group}
+APP_PORT=${app_port}
+ENVIRONMENT=${environment}
+CONF
+
+cat > /opt/app/app.env <<'ENV'
+PORT=8080
+LOG_LEVEL=${log_level}
+APP_ENV=${environment}
+ENV
+
+echo '${deploy_script}' | base64 -d | gunzip > /usr/local/bin/deploy-app.sh
+echo '${health_script}' | base64 -d | gunzip > /usr/local/bin/system_health.sh
+echo '${health_unit}'   | base64 -d | gunzip > /etc/systemd/system/system-health.service
+echo '${health_timer}'  | base64 -d | gunzip > /etc/systemd/system/system-health.timer
+chmod 0755 /usr/local/bin/deploy-app.sh /usr/local/bin/system_health.sh
+
+systemctl daemon-reload
+systemctl enable --now system-health.timer
+
+%{ if initial_image != "" ~}
+/usr/local/bin/deploy-app.sh '${initial_image}' || echo "initial deploy failed; the CI pipeline will deploy"
+%{ endif ~}

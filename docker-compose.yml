@@ -1,0 +1,54 @@
+# Application only:            docker compose up -d --build
+# Application + observability: docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d --build
+name: devops-task
+
+services:
+  app:
+    build:
+      context: ./app
+      args:
+        VERSION: ${APP_VERSION:-1.0.0}
+        GIT_SHA: ${GIT_SHA:-local}
+    image: devops-task-app:${APP_VERSION:-1.0.0}
+    container_name: app
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_ENV: ${APP_ENV:-local}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      ENABLE_CHAOS: ${ENABLE_CHAOS:-false}
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 128M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+    networks:
+      - frontend
+      - backend
+
+networks:
+  # frontend: has published ports (app, grafana). backend: internal-only, no host/internet access.
+  frontend: {}
+  backend:
+    internal: true

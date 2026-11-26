@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+.env
+k8s/secret.env
+health_log.txt*
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl.bak
+*.tfplan
+terraform/bootstrap/terraform.tfstate*

@@ -1,0 +1,135 @@
+# Layered on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d --build
+# Only Grafana publishes a port (3000). Everything else lives on the internal `backend` network.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks: [backend]
+    depends_on: [node-exporter, cadvisor]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 512M }
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|run/credentials/.+)($$|/)
+    # Why these privileges: node_exporter reads the HOST's /proc and /sys.
+    #  - pid: host           -> process/CPU/memory stats come from the host PID namespace
+    #  - /:/host:ro,rslave   -> read-only view of the host filesystem for disk metrics (rslave so
+    #                           later host mounts propagate in; read-only so it cannot modify anything)
+    # No privileged mode, no published port, no extra capabilities.
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks: [backend]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    command:
+      - --housekeeping_interval=15s
+      - --docker_only=true
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service
+    # Why these mounts: cAdvisor reads cgroup + Docker metadata for every container.
+    #  - /:/rootfs:ro, /sys:ro, /var/lib/docker:ro, /dev/disk:ro -> read-only access to cgroups,
+    #    image/layer storage and disk info
+    #  - /var/run:ro -> Docker socket (container names/labels). Read-only mount, but the socket
+    #    itself still allows API calls: treat cAdvisor as highly trusted.
+    #  - /dev/kmsg   -> OOM-kill events
+    # Not privileged. If container metrics are empty on your host (e.g. SELinux, some Docker
+    # Desktop setups) add `privileged: true` - documented trade-off in README.
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    restart: unless-stopped
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+
+  loki:
+    image: grafana/loki:3.2.1
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 512M }
+
+  alloy:
+    image: grafana/alloy:v1.4.3
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    # Docker service discovery needs the Docker socket (read-only mount; see cAdvisor note above).
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    restart: unless-stopped
+    networks: [backend]
+    depends_on: [loki]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 256M }
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env (see .env.example)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q ok"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [frontend, backend]
+    depends_on: [prometheus, loki]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 384M }
+
+volumes:
+  prometheus-data: {}
+  loki-data: {}
+  alloy-data: {}
+  grafana-data: {}
